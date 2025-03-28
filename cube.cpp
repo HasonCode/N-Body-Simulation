@@ -51,17 +51,17 @@ class particle_system{
             // num_vertices = (layers-2)*num_points+2;
             // num_triangles =(layers-3)*(2*num_points)+2*num_points;
             framerate=frames;
-            positions = (float*)malloc(0*sizeof(float));
-            velocities = (float*)malloc(0*sizeof(float));
-            forces = (float*)malloc(0*sizeof(float));
-            radii = (float*)malloc(0*sizeof(float));
-            masses = (float*)malloc(0*sizeof(float));
+            positions = (float*)malloc(3*sizeof(float));
+            velocities = (float*)malloc(3*sizeof(float));
+            forces = (float*)malloc(3*sizeof(float));
+            radii = (float*)malloc(1*sizeof(float));
+            masses = (float*)malloc(1*sizeof(float));
 
         }
         float distance_calculator(int ind1, int ind2){
             float distancex,distancey,distancez;
             distancex = pow(positions[ind1*3]-positions[ind2*3],2);
-            distancey = pow(positions[ind1*3+1]-positions[ind2*3+2],2);
+            distancey = pow(positions[ind1*3+1]-positions[ind2*3+1],2);
             distancez = pow(positions[ind1*3+2]-positions[ind2*3+2],2);
             float distance = sqrt(distancex+distancey+distancez);
             return distance;
@@ -183,7 +183,10 @@ class particle_system{
             if (z<0){
                 z*=-1;
             }
-            float theta1 = atan2(distance_calculator(ind1,ind2),y);
+            float theta1 = asinf(y/distance_calculator(ind1,ind2));
+            // cout<<"ANGLE: "<<theta1<<endl;
+            // cout<<"DIST: " <<distance_calculator(ind1,ind2)<<endl;
+            // cout<<"Y1: "<<positions[ind1*3+1]<<" Y2: "<<positions[ind2*3+1] <<endl;
             float theta2 = acosf((double)x/(double)distance_calculator(ind1,ind2));
             float force = gravity_equation(masses[ind1],masses[ind2],distance_calculator(ind1,ind2));
             float force_x = force*sin(theta1)*cos(theta2);
@@ -232,6 +235,8 @@ class particle_system{
             return sqrt(pow(velx,2.0)+pow(vely,2.0)+pow(velz,2.0));
         }
         void merge_masses(int ind1, int ind2){
+            cout<<"\033[1;31mbold red text\033[0m\n"<<endl;
+            cout<<"SIZE: "<<size<<endl;
             float volume = 16.0/9.0 * M_PI*M_PI * radii[ind1]
             * radii[ind1] + radii[ind2]*radii[ind2];  
             float new_radius = pow(pow(radii[ind1]*10,3)+pow(radii[ind2]*10,3),1.0/3.0)/10;
@@ -245,12 +250,12 @@ class particle_system{
             //m1v1 + m2v2 = mv
 
             float posx,posy,posz;
-            if (masses[ind1]>masses[ind2]){
+            if (radii[ind1]>radii[ind2]){
                 posx = positions[ind1*3];
                 posy = positions[ind1*3+1];
                 posz = positions[ind1*3+2];
             }
-            else if (masses[ind1]<masses[ind2]){
+            else if (radii[ind1]<radii[ind2]){
                 posx = positions[ind2*3];
                 posy = positions[ind2*3+1];
                 posz = positions[ind2*3+2];
@@ -327,24 +332,28 @@ class particle_system{
         }
     bool can_merge(int ind1, int ind2){
         float distance = distance_calculator(ind1,ind2);
-        return distance<=(radii[ind1]);
+        return distance<=(radii[ind1]) || distance<=(radii[ind2]);
     }
-    void update_merges(){
+    bool update_merges(){
+        bool flag = false;
         for (int i = 0; i < size; i++){
             for (int j = i+1; j < size; j++){
                 if (can_merge(i,j)){
+                    flag = true;
                     merge_masses(i,j);
                     i=0;
                     break;
                 }
             }
         }
+        return flag;
     }
     void updater(){
-        update_positions();
-        update_velocities();
-        update_forces();
-        update_merges();
+        if (!update_merges()){
+            update_positions();
+            update_velocities();
+            update_forces();
+        }
     }
 
     GLfloat* generate_sphere(int ind){
@@ -358,8 +367,12 @@ class particle_system{
                 // float rot = num_points/2*M_PI*point;
                 float rot = (2*M_PI)/num_points*point;
                 // cout << "Rot: " << rot << endl;
-                float x = sqrt(radius*radius - abs(init_y)*abs(init_y))*cos(rot);
-                float z = sqrt(radius*radius - abs(init_y)*abs(init_y))*sin(rot);
+                float calc_val = radius*radius - abs(init_y)*abs(init_y);
+                if (calc_val<0){
+                    calc_val=0.0;
+                }
+                float x = sqrt(calc_val)*cos(rot);
+                float z = sqrt(calc_val)*sin(rot);
                 ret_arr[p*3] = (GLfloat)(x+positions[ind*3]);
                 ret_arr[p*3+1] = (GLfloat)(init_y+positions[ind*3+1]);
                 ret_arr[p*3+2] = (GLfloat)(z+positions[ind*3+2]);
@@ -470,8 +483,8 @@ class particle_system{
         }
         return fun_arr;
     }
-    GLushort* get_all_indices(){
-        GLushort* fun_arr = (GLushort*)malloc(size*num_triangles*3*sizeof(GLushort));
+    GLuint* get_all_indices(){
+        GLuint* fun_arr = (GLuint*)malloc(size*num_triangles*3*sizeof(GLuint));
         int point = 0;
         for (int sphere = 0; sphere<size;sphere++){
             for (int layer = 0; layer < layers; layer++){
@@ -599,10 +612,10 @@ class particle_system{
     } 
 };
 
-particle_system p(10);
+particle_system p(250);
 GLfloat* sphere_verticies;
-GLushort* sphere_elements;
-
+GLuint* sphere_elements;
+GLfloat* sphere_colors;
 
 float aspectaxis(){
     float outputzoom = 1.0f;
@@ -638,159 +651,32 @@ void on_resize(int width, int height){
 }
 
 
-glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1.0f*screen_width/screen_height,0.05f,100.0f);
+glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1.0f*screen_width/screen_height,0.05f,250.0f);
 bool init_resources(){
 
-    GLfloat triangle_verticies[] = {
-        0.0, 0.0,
-        0.5, 0.0,
-        0.5, 0.3,
- 
-        0.0, 0.0,
-        0.0, 0.3,
-        0.5, 0.3
-
-    };
-
-    GLfloat triangle_colors[] = {
-        1.0, 1.0, 0.0,
-        0.0, 0.0, 1.0,
-        1.0, 0.0, 0.0,
-    };
-
-    GLfloat cube_verticies[] = {
-        -1.0, -1.0, 1.0,
-        1.0, -1.0, 1.0, 
-        1.0, 1.0, 1.0, 
-        -1.0, 1.0, 1.0,
-
-        -1.0, -1.0, -1.0,
-        1.0, -1.0, -1.0,
-        1.0, 1.0, -1.0, 
-        -1.0, 1.0, -1.0
-    };
-
-    GLfloat cube_colors[] = {
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 0.0, 1.0, 
-        1.0, 1.0, 1.0,
-
-        1.0, 0.0, 0.0,
-        0.0, 1.0, 0.0,
-        0.0, 0.0, 1.0,
-        1.0, 1.0, 1.0
-    };
-    struct attributes triangle_attributes[] = {
-        {{0.0,  0.8,0.0},   {1.0, 1.0, 0.0,}},
-        {{-0.8, -0.8,0.0},   {0.0, 0.0, 1.0,}},
-         {{0.8, -0.8,0.0 },  {1.0, 0.0, 0.0,}}
-    };
-
-    GLushort cube_elements[] = {
-        // front
-        0,1,2,
-        2,3,0,
-        // right 
-        1, 5, 6,
-        6, 2, 1,
-        // back
-        7, 6, 5,
-        5, 4, 7,
-        // left
-        4, 0, 3, 
-        3, 7, 4,
-        //bottom 
-        4, 5, 1,
-        1, 0, 4,
-        // top 
-        3, 2, 6, 
-        6, 7, 3
-
-    };
-    GLfloat temp_sphere_colors[] = {
-        0.0,1.0,0.0,
-        1.0,0.0,0.0,
-        0.0,1.0,0.0,
-        0.0,0.0,1.0,
-        1.0,0.0,0.0,
-        1.0,0.0,0.0,
-        0.0,1.0,0.0,
-        0.0,0.0,1.0,
-        1.0,0.0,0.0,
-        1.0,0.0,0.0,
-        0.0,1.0,0.0,
-        0.0,0.0,1.0,
-        1.0,0.0,0.0,
-        1.0,0.0,0.0,
-        0.0,1.0,0.0
-    };
-    GLshort temp_sphere_elements[] = {
-        0,1,2,
-        0,2,3,
-        0,3,4,
-        0,4,1,
-        1,2,6,
-        1,5,6,
-        2,3,7,
-        2,6,7,
-        3,4,8,
-        3,7,8,
-        4,1,8,
-        1,8,5,
-        5,6,10,
-        5,9,10,
-        6,7,11,
-        6,10,11,
-        7,8,12,
-        7,11,12,
-        8,5,12,
-        5,12,9,
-        13,9,10,
-        13,10,11,
-        13,11,12,
-        13,12,9,
-    };
-
-    GLfloat temp_sphere_verticies[] = {
-        0,-1,0,
-        0.866, -0.5, 0,
-        0, -0.5,0.866,
-        -0.866,-0.5,0,
-        0,-0.5,-0.866,
-        1,0,0,
-        0,0,1,
-        -1,0,0,
-        0,0,-1,
-        0.866,0.5,0,
-        0,0.5,0.866,
-        -0.866,0.5,0,
-        0,0.5,-0.866,
-        0,1,0,
-    };
 
     sphere_elements = p.get_all_indices();
-    GLfloat* sphere_colors = p.get_all_colors();
+    sphere_colors = p.get_all_colors();
     sphere_verticies = p.generate_spheres();
 
 
     // GLfloat* sphere_colors = temp_sphere_colors;
     // GLfloat* sphere_verticies = temp_sphere_verticies;
-    // for (int i = 0; i < p.num_vertices*p.size; i++){
-    //     cout << "X: " << sphere_verticies[i*3] << " Y: " << sphere_verticies[i*3+1] << " Z: " << sphere_verticies[i*3+2]<<endl;
-    // }
+    for (int i = 0; i < p.num_vertices*p.size; i++){
+        cout << "X: " << sphere_verticies[i*3] << " Y: " << sphere_verticies[i*3+1] << " Z: " << sphere_verticies[i*3+2]<<endl;
+    }
 
     // for (int i = 0; i < p.num_vertices; i++){
     //     cout << "R: " << sphere_colors[i*3] << " G: " << sphere_colors[i*3+1] << " B: " << sphere_colors[i*3+2]<<endl;
     // }
 
 
-    // for (int i = 0; i < p.num_triangles*2; i++){
-    //     cout << "A: " << sphere_elements[i*3] << " B: " << sphere_elements[i*3+1] << " C: " << sphere_elements[i*3+2]<<endl;
-    // }
+    for (int i = 0; i < p.num_triangles*p.size; i++){
+        cout << "A: " << sphere_elements[i*3] << " B: " << sphere_elements[i*3+1] << " C: " << sphere_elements[i*3+2]<<endl;
+    }
     glGenBuffers(1, &ibo_cube_elements);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER,p.num_triangles*sizeof(GLshort)*3*p.size,sphere_elements,GL_STATIC_DRAW);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,p.num_triangles*sizeof(GLuint)*3*p.size,sphere_elements,GL_STATIC_DRAW);
 
 
 
@@ -862,6 +748,115 @@ bool init_resources(){
     }
     return true;
 }
+
+float facex = -2.0, facey = 0.0, facez = 20.0;
+float lookx = 0.0;
+float looky = 0.0;
+float lookz = 0.0;
+
+GLfloat* create_circle(int num_points,int layers){
+    int num_vertices = (layers-2)*num_points+2;
+    GLfloat* ret_arr = (GLfloat*)malloc(sizeof(GLfloat)*3*(num_points*(layers-2)+2));
+    float radius = 0.02, rotation = 0,step = 2*M_PI/num_points;
+    float init_y = -radius;
+    int p = 0;
+    for (int layer = 0; layer<layers; layer++){
+        for (int point = 0; point<num_points;point++){
+                // cout<<p<<endl;
+                // float rot = num_points/2*M_PI*point;
+                float rot = (2*M_PI)/num_points*point;
+                // cout << "Rot: " << rot << endl;
+                float x = sqrt(radius*radius - abs(init_y)*abs(init_y))*cos(rot);
+                float z = sqrt(radius*radius - abs(init_y)*abs(init_y))*sin(rot);
+                ret_arr[p*3] = (GLfloat)(x+lookx);
+                ret_arr[p*3+1] = (GLfloat)(init_y+looky);
+                ret_arr[p*3+2] = (GLfloat)(z+lookz);
+                if (layer==0||layer==layers-1){
+                    ret_arr[p*3]=lookx;
+                    ret_arr[p*3+2]=lookz;
+                    p++;
+                    break;
+                }
+                else{
+                    p++;
+                }
+            }
+            init_y+=(radius*2)/(layers-1);
+        } 
+    return ret_arr;
+}
+
+GLfloat* get_color_array(int num_points, int layers){
+    GLfloat* ret_arr = (GLfloat*)malloc(sizeof(GLfloat)*(3*num_points*(layers-2)+2));
+    for (int i = 0; i < (((layers-2)*num_points)+2);i++){
+        ret_arr[i*3] = 0.0;
+        ret_arr[i*3+1] = 0.0;
+        ret_arr[i*3+2] = 0.0;
+    }
+    return ret_arr;
+}
+int count =0;
+GLuint* get_cursor(int num_points, int layers){
+    int num_triangles =(layers-3)*(2*num_points)+2*num_points;    
+    GLuint* fun_arr = (GLuint*)malloc(3*num_triangles*sizeof(GLuint));
+    int point = 0;
+    for (int layer = 0; layer < layers; layer++){
+        if (layer>0 && layer<layers-2){
+            for (int i = (layer-1)*num_points+1; i < (layer)*num_points+1; i++){
+                if (i%num_points!=0){
+                    fun_arr[point*3] = i;
+                    fun_arr[point*3+1] = i+1;
+                    fun_arr[point*3+2] = i+num_points+1;
+                    fun_arr[point*3+3] = i;
+                    fun_arr[point*3+4] = i+num_points;
+                    fun_arr[point*3+5] = i+num_points+1;
+                    point+=2;
+                    }
+                else{
+                    fun_arr[point*3] = i;
+                    fun_arr[point*3+1] = (layer-1)*num_points+1;
+                    fun_arr[point*3+2] = i+num_points;
+                    fun_arr[point*3+3] = (layer-1)*num_points+1;
+                    fun_arr[point*3+4] = i+num_points;
+                    fun_arr[point*3+5] = (layer)*num_points+1;
+                    point+=2;
+                }
+            }
+        }
+        else if(layer==0){
+            for (int i = 0; i<num_points;i++){
+                if (i!=num_points-1){
+                    fun_arr[point*3] = 0;
+                    fun_arr[point*3+1] = i+1;
+                    fun_arr[point*3+2] = i+2;
+                }
+                else{
+                    fun_arr[point*3]=0;
+                    fun_arr[point*3+1]=i+1;
+                    fun_arr[point*3+2] = 1;
+                }
+                point++;
+            }
+        }
+        else if (layer==layers-2){
+            for (int i = num_points*(layer-1)+1; i<num_points*(layer)+1;i++){
+                if (i%num_points!=0){
+                    fun_arr[point*3]= num_points*(layer)+1;
+                    fun_arr[point*3+1] = i;
+                    fun_arr[point*3+2] = 1+i;
+                }
+                else{
+                    fun_arr[point*3] = num_points*(layer)+1;
+                    fun_arr[point*3+1] = i;
+                    fun_arr[point*3+2] = num_points*(layer-1)+1;
+                }
+                point++;
+            }
+        }
+    }
+        return fun_arr;
+}
+
 void render(SDL_Window* window){
     glClearColor(1.0,1.0,1.0,1.0);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
@@ -888,10 +883,54 @@ void render(SDL_Window* window){
     );
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
     int size; glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER,GL_BUFFER_SIZE, &size);
-    glDrawElements(GL_TRIANGLES,p.num_triangles*p.size*3,GL_UNSIGNED_SHORT,0);
+    glDrawElements(GL_TRIANGLES,p.num_triangles*p.size*3,GL_UNSIGNED_INT,0);
 
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_cube);
+    int num_points = 10,layers = 10;
+    GLfloat* cursor_points = create_circle(num_points,layers);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(GLfloat)*3*(num_points*(layers-2)+2),cursor_points,GL_STATIC_DRAW);
+    // if (count%100==0){
+    //     for (int i = 0; i<(num_points*(layers-2)+2);i++){
+    //         cout<<"Cursor X: "<<cursor_points[i*3]<<" Cursor Y: " << cursor_points[i*3+1] << " Cursor Z: " << cursor_points[i*3+2]<<endl;;
+    //     }
+    // }
+    // count++;
+    free(cursor_points);
 
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_cube_colors);
+    GLfloat* cursor_colors = get_color_array(num_points,layers);
+    glBufferData(GL_ARRAY_BUFFER,sizeof(GLfloat)*3*(num_points*(layers-2)+2),cursor_colors,GL_STATIC_DRAW);
+    free(cursor_colors);
 
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo_cube_elements);
+    GLuint* cursor_elements = get_cursor(num_points,layers);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER,3*sizeof(GLuint)*((layers-3)*(2*num_points)+2*num_points),cursor_elements,GL_STATIC_DRAW);
+    free(cursor_elements);
+
+    glUseProgram(program);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_cube);
+    glEnableVertexAttribArray(attribute_coord3d);
+    glVertexAttribPointer(
+        attribute_coord3d,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        3*sizeof(GLfloat),
+        0);
+    
+    glEnableVertexAttribArray(attribute_v_color);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_colors);
+    glVertexAttribPointer(
+        attribute_v_color,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(GLfloat)*3,
+        0
+    );
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+    glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER,GL_BUFFER_SIZE, &size);
+    glDrawElements(GL_TRIANGLES,p.num_triangles*p.size*3,GL_UNSIGNED_INT,0);
     // glDrawArrays(GL_TRIANGLES,0,6);
 
     glDisableVertexAttribArray(attribute_coord3d);
@@ -902,14 +941,17 @@ void render(SDL_Window* window){
 
 void free_resources(){
     glDeleteProgram(program);
-    glDeleteBuffers(1,&vbo_triangle);
+    glDeleteBuffers(1,&vbo_cube);
+    glDeleteBuffers(1,&vbo_cube_colors);
+    glDeleteBuffers(1,&ibo_cube_elements);
+
 }
-float facex = -2.0, facey = 0.0, facez = 20.0;
+
 void logic(){
     // float current_fade  = sinf(SDL_GetTicks() / 1000.0 * (2*3.14) / 5) / 2 + 0.5;
     // glm::mat4 projection = glm::mat4(1.0f); 
-    glm::mat4 model = glm::translate(glm::mat4(1.0f),glm::vec3(0.0,0.0,-4.0));
-    glm::mat4 view = glm::lookAt(glm::vec3(facex,facey,facez),glm::vec3(0.0,0.0,0.0),glm::vec3(0.0,1.0,0.0));
+    glm::mat4 model = glm::translate(glm::mat4(1.0f),glm::vec3(0.0,0.0,0.0));
+    glm::mat4 view = glm::lookAt(glm::vec3(facex,facey,facez),glm::vec3(lookx,looky,lookz),glm::vec3(0.0,1.0,0.0));
     float angle = SDL_GetTicks() / 1000.0 * 45;
     glm::vec3 axis_y(0,1,0);
     glm::mat4 anim = glm::rotate(glm::mat4(1.0f), glm::radians(angle),axis_y);
@@ -933,15 +975,19 @@ int mousex=0;
 int mousey=0;
 int prev_x,prev_y;
 
+float look_dist = 2.0, rotation = 0.0,rotation2 = 0.0;
+float* current = (float*)malloc(3*sizeof(float));
+float* look = (float*)malloc(3*sizeof(float));
+
 float* movement_vector(float* cam_pos, float* look_at,float move_amount){
     float* ret_arr = (float*)malloc(3*sizeof(float));
     float x = abs(cam_pos[0]-look_at[0]);
     float y = abs(cam_pos[1]-look_at[2]);
     float z = abs(cam_pos[2]-look_at[2]);
     float dist = sqrt(pow(x,2.0)+pow(y,2.0)+pow(z,2.0));
-    ret_arr[0] = move_amount*sin(acos(y/dist))*cos(atan2(z,x));
-    ret_arr[1] = move_amount * sin(acos(y/dist))*cos(atan2(z,x));
-    ret_arr[2] = move_amount * cos(acos(y/dist));
+    ret_arr[0] = move_amount*cos(rotation)*cos(rotation2);
+    ret_arr[1] = move_amount * sin(rotation2);
+    ret_arr[2] = move_amount * sin(rotation)*cos(rotation2);
     if (cam_pos[0]>look_at[0]){
         cam_pos[0]*=-1;
     }
@@ -953,11 +999,6 @@ float* movement_vector(float* cam_pos, float* look_at,float move_amount){
     }
     return ret_arr;
 }
-float lookx = 0.0;
-float looky = 0.0;
-float lookz = -4.0;
-float* current = (float*)malloc(3*sizeof(float));
-float* look = (float*)malloc(3*sizeof(float));
 void main_loop(SDL_Window* window){
     while (true){
         SDL_Event ev;
@@ -973,29 +1014,55 @@ void main_loop(SDL_Window* window){
                 current[0]=facex,current[1]=facey,current[2]=facez;
                 look[0] = lookx,look[1]=looky,look[2]=lookz;
                 move_arr = movement_vector(current,look,camera_speed/divisor);
-                if (ev.key.keysym.scancode == SDL_SCANCODE_W){
+                if (ev.key.keysym.scancode == SDL_SCANCODE_S){
                     facex-=move_arr[0];
                     facey-=move_arr[1];
                     facez-=move_arr[2];
+                    lookx-=move_arr[0];
+                    looky-=move_arr[1];
+                    lookz-=move_arr[2];
+                    // lookz-=move_arr[2];
                 }
                 // else if (ev.key.keysym.scancode == SDL_SCANCODE_A){
                 //     facex -= camera_speed/divisor;
                 // }
-                else if (ev.key.keysym.scancode == SDL_SCANCODE_S){
+                else if (ev.key.keysym.scancode == SDL_SCANCODE_W){
                     facex+=move_arr[0];
                     facey+=move_arr[1];
                     facez+=move_arr[2];
+                    lookx+=move_arr[0];
+                    looky+=move_arr[1];
+                    lookz+=move_arr[2];
+                    // lookz+=move_arr[2];
                 }
-                
                 if (ev.key.keysym.scancode == SDL_SCANCODE_RETURN){
                     if (camera_speed<1000){
                         camera_speed+=10;
                     }
+                    
                 }
                 if (ev.key.keysym.scancode == SDL_SCANCODE_RSHIFT){
-                    if (camera_speed>10){
+                    if (camera_speed>0.1){
                         camera_speed-=10;
                     }
+                }
+                if (ev.key.keysym.scancode == SDL_SCANCODE_Q){
+                    if (turn_speed>0.006){
+                        turn_speed-=0.005;
+                    }
+                }
+                if (ev.key.keysym.scancode == SDL_SCANCODE_E){
+                    if (turn_speed<0.1){
+                        turn_speed+=0.005;
+                    }
+                }
+                if (ev.key.keysym.scancode == SDL_SCANCODE_UP){
+                    if (p.framerate>6){
+                        p.framerate-=5;
+                    }
+                }
+                if (ev.key.keysym.scancode == SDL_SCANCODE_DOWN){
+                    p.framerate+=5;
                 }
                 // else if (ev.key.keysym.scancode == SDL_SCANCODE_D){
                 //     facez-=camera_speed/divisor;
@@ -1003,16 +1070,23 @@ void main_loop(SDL_Window* window){
                 // }
             }
             if (ev.type = SDL_MOUSEBUTTONDOWN){
+                float dist = sqrt(pow(facex-lookx,2)+pow(facey-looky,2)+pow(facez-lookz,2));
                 if(!flag){
                     mouse_state = SDL_GetMouseState(&mousex,&mousey);
-                    prev_x = mousex;
-                    prev_y = mousey;
+                    rotation = mousex;
+                    rotation2 = mousey;
+                    lookx = look_dist*cos(rotation)*cos(rotation2)+facex;
+                    lookz = look_dist*cos(rotation2)*sin(rotation)+facez;
+                    looky = look_dist*sin(rotation2)+facey;
                     flag = true;
                 }
                 else{
                     if (mouse_state==1){ 
-                        facex+=(mousex-prev_x)*turn_speed;
-                        facey+=(mousey-prev_y)*turn_speed;
+                        rotation+=(mousex-prev_x)*turn_speed;
+                        rotation2+=(mousey-prev_y)*turn_speed;
+                        lookx = look_dist*cos(rotation)*cos(rotation2)+facex;
+                        lookz = look_dist*sin(rotation)*cos(rotation2)+facez;
+                        looky = look_dist*sin(rotation2)+facey;
                     }
                     prev_x = mousex;
                     prev_y = mousey;
@@ -1026,8 +1100,7 @@ void main_loop(SDL_Window* window){
 
         }
         // p.update_forces();
-        cout<<"X position: " << p.positions[0] << " Y position: " << p.positions[1] << " Z position: " << p.positions[2]<< endl;
-        
+        // cout<<"Size: "<<p.size<<endl;
         // cout<<"X force: " << p.forces[0] << " Y force: " << p.forces[1] << " Z force: " << p.forces[2]<< endl;
         // cout<<"X velocity: " << p.velocities[3] << " Y velocity: " << p.velocities[4] << " Z velocity: " << p.velocities[5]<< endl;
         p.updater();
@@ -1036,13 +1109,22 @@ void main_loop(SDL_Window* window){
         glBindBuffer(GL_ARRAY_BUFFER,vbo_cube);
         glBufferData(GL_ARRAY_BUFFER,p.num_vertices*3*sizeof(GLfloat)*p.size,sphere_verticies,
                 GL_STATIC_DRAW);
+        free(sphere_elements);
         sphere_elements = p.get_all_indices();
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo_cube_elements);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER,p.num_triangles*3*p.size*sizeof(GLushort),sphere_elements,GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER,p.num_triangles*3*p.size*sizeof(GLuint),sphere_elements,GL_STATIC_DRAW);
+        free(sphere_colors);
+        sphere_colors = p.get_all_colors();
+        glBindBuffer(GL_ARRAY_BUFFER,vbo_cube_colors);
+        glBufferData(GL_ARRAY_BUFFER,p.num_vertices*3*sizeof(GLfloat)*p.size,sphere_colors,GL_STATIC_DRAW);
         logic();
         // cout << "Pointer to window:" << window<<endl;
         render(window);
     }
+}
+
+GLfloat* cross_product(){
+    return {};
 }
 
 int main(int argc, char* argv[]){
@@ -1059,15 +1141,45 @@ int main(int argc, char* argv[]){
     pos[1]=1.0;
     pos[2]=1.0;
 
-    p.add_particle(pos,vel,force,45000000000.0,1.3);
+    p.add_particle(pos,vel,force,45000000000000.0,12.0);
     
     pos[0]=-1.0;
     pos[1]=-1.0;
     pos[2]=-1.0;
+    // for (int i = 0; i<2;i++){
+    //     for (int j = 0; j<2; j++){
+    //         for (int k = 0; k<2;k++){
+    //             pos[0]=2+i*5;
+    //             pos[1]=2+j*5;
+    //             pos[2]=2+k*5;
+    //             p.add_particle(pos,vel,force,250000000.0,1.3);
+    //         }
+    //     }
+    // }
     p.add_particle(pos,vel,force,250000000.0,1.0);
+    pos[0]=5.0;
+    pos[1]=5.0;
+    pos[2] = 5.0;
+    p.add_particle(pos,vel,force,250000000.0,1.0);
+
+    pos[0]=-5.0;
+    pos[1]=-5.0;
+    pos[2] =-5.0;
+    p.add_particle(pos,vel,force,250000000.0,1.0);
+
+    pos[0]=-10.0;
+    pos[1]=-10.0;
+    pos[2] =-10.0;
+    p.add_particle(pos,vel,force,250000000.0,1.0);
+
+    pos[0]=10.0;
+    pos[1]=10.0;
+    pos[2] =10.0;
+    p.add_particle(pos,vel,force,250000000.0,1.0);
+
     // cout<< "Velocity: "<<p.velocities[8]<<" Vel[2]"<<vel[2]<<endl;
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Window* window = SDL_CreateWindow("My Textured Cube",
+    SDL_Window* window = SDL_CreateWindow("My Fun N-Body Simulation",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screen_width, screen_height,
         SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL);
     SDL_GL_CreateContext(window);
