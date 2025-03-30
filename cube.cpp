@@ -38,6 +38,8 @@ class particle_system{
         int num_vertices = (layers-2)*num_points+2;
         int num_triangles =(layers-3)*(2*num_points)+2*num_points;
         int size = 0;
+        float intensity = 10;
+        GLfloat* light_pos;
         float framerate;
         float* positions;
         float* velocities;
@@ -51,6 +53,10 @@ class particle_system{
             // num_vertices = (layers-2)*num_points+2;
             // num_triangles =(layers-3)*(2*num_points)+2*num_points;
             framerate=frames;
+            light_pos = (GLfloat*)malloc(3*sizeof(GLfloat));
+            light_pos[0] = 55;
+            light_pos[1] = 55;
+            light_pos[2] = 55;
             positions = (float*)malloc(3*sizeof(float));
             velocities = (float*)malloc(3*sizeof(float));
             forces = (float*)malloc(3*sizeof(float));
@@ -355,7 +361,122 @@ class particle_system{
             update_forces();
         }
     }
+    GLfloat* cross_product(GLfloat* vec1, GLfloat* vec2){
+        GLfloat* ret_val = (GLfloat*)malloc(3*sizeof(GLfloat));
+        ret_val[0] = vec1[1]*vec2[2] - vec1[2]*vec2[1];
+        ret_val[1] = vec1[0]*vec2[2] - vec1[2]*vec2[0];
+        ret_val[2] = vec1[0]*vec2[1] - vec1[1]*vec2[0];
+        return ret_val;
+    }
+    
+    GLfloat* light_direction(GLfloat* point, GLfloat* source){
+        float delt_x = abs(point[0]-source[0]),delt_y = abs(point[1]-source[1]), delt_z = abs(point[2]-source[2]);
+        GLfloat* ret_val = (GLfloat*)malloc(3*sizeof(GLfloat));
+        float theta1 = atan2(delt_z,delt_x);
+        float theta2 = asin(delt_y/sqrt(pow(delt_x,2)+pow(delt_y,2)+pow(delt_z,2)));
+        ret_val[0] = 1*cos(theta1)*cos(theta2);
+        ret_val[1] = 1*sin(theta2);
+        ret_val[2] = 1*sin(theta1)*cos(theta2);
+        if (point[0]>source[0]){
+            ret_val[0]*=-1;
+        }
+        if (point[1]>source[1]){
+            ret_val[1]*=-1;
+        }
+        if (point[2]>source[2]){
+            ret_val[2]*=-1;
+        }
+        return ret_val;
+    }
+    
+    GLfloat* scalar_mult(GLfloat* vec, GLfloat scalar){
+        GLfloat* ret_val = (GLfloat*)malloc(3*sizeof(GLfloat));
+        for (int i = 0; i<3;i++){
+            ret_val[i]=vec[i]*scalar;
+        }
+        return ret_val;
+    }
+    
+    GLfloat get_brightness(GLfloat* point, GLfloat* source, GLfloat intensity, GLfloat* color,GLfloat* normal_vector){
+        GLfloat* vec1 = cross_product(normal_vector,color);
+        GLfloat* vec2 = scalar_mult(vec1,intensity);
+        GLfloat* direction = light_direction(point,source);
+        GLfloat ret_val = 0.0;
+        for (int i = 0; i < 3; i++){
+            ret_val += vec2[i]*direction[i];
+        }
+        free(vec1);
+        free(vec2);
+        free(direction);
+        return ret_val;
+    }
+    GLfloat* calc_normal_vector(int tnum, GLuint* triangles,GLfloat* vertices){
+        GLfloat* vec1 = (GLfloat*)malloc(3*sizeof(GLfloat));
+        GLfloat* vec2 = (GLfloat*)malloc(3*sizeof(GLfloat));
 
+        vec1[0] = abs(vertices[(triangles[tnum*3]-1)*3]-vertices[(triangles[tnum*3+1]-1)*3]);
+        vec1[1] = abs(vertices[(triangles[tnum*3]-1)*3+1]-vertices[(triangles[tnum*3+1]-1)*3+1]);
+        vec1[2] = abs(vertices[(triangles[tnum*3]-1)*3+2]-vertices[(triangles[tnum*3+1]-1)*3+2]);
+
+        vec2[0] = abs(vertices[(triangles[tnum*3+1]-1)*3]-vertices[(triangles[tnum*3+2]-1)*3]);
+        vec2[1] = abs(vertices[(triangles[tnum*3+1]-1)*3+1]-vertices[(triangles[tnum*3+2]-1)*3+1]);
+        vec2[2] = abs(vertices[(triangles[tnum*3+1]-1)*3+2]-vertices[(triangles[tnum*3+2]-1)*3+2]);
+
+        GLfloat* ret_vec = cross_product(vec1,vec2);
+        free(vec1);
+        free(vec2);
+        return ret_vec;
+    }
+    GLfloat* update_colors(){
+        GLfloat* colors = get_all_colors();
+        GLfloat* vertices = generate_spheres();
+        GLuint* triangles = get_all_indices();
+        GLfloat* colors_copy = (GLfloat*)malloc(size*num_vertices*3);
+        GLfloat* pos = (GLfloat*)malloc(3*sizeof(GLfloat));
+        GLfloat* color = (GLfloat*)malloc(3*sizeof(GLfloat));
+        for (int i = 0; i < size*num_triangles; i++){
+            GLfloat* norm_vector = calc_normal_vector(i,triangles,vertices);
+            int ind = (triangles[i*3]-1);
+            pos[0] = vertices[ind*3];
+            pos[1] = vertices[ind*3+1];
+            pos[2] = vertices[ind*3+2];
+            color[0] =colors[ind*3];
+            color[1] =colors[ind*3+1];
+            color[2] =colors[ind*3+2];
+            GLfloat brightness1 = get_brightness(pos,light_pos,intensity,colors,norm_vector);
+            colors_copy[ind*3] = color[0]*brightness1;
+            colors_copy[ind*3+1] = color[1]*brightness1;
+            colors_copy[ind*3+2] = color[2]*brightness1;
+            ind = triangles[i*3+1]-1;
+            pos[0] = vertices[ind*3];
+            pos[1] = vertices[ind*3+1];
+            pos[2] = vertices[ind*3+2];
+            color[0] = colors[ind*3];
+            color[1] = colors[ind*3+1];
+            color[2] = colors[ind*3+2];
+            GLfloat brightness2 = get_brightness(pos,light_pos,intensity,colors,norm_vector);
+            colors_copy[ind*3] = color[0]*brightness2;
+            colors_copy[ind*3+1] = color[1]*brightness2;
+            colors_copy[ind*3+2] = color[2]*brightness2;
+            ind = triangles[i*3+2]-1;
+            pos[0] = vertices[ind*3];
+            pos[1] = vertices[ind*3+1];
+            pos[2] = vertices[ind*3+2];
+            color[0] =colors[ind*3];
+            color[1] =colors[ind*3+1];
+            color[2] =colors[ind*3+2];
+            GLfloat brightness3 = get_brightness(pos,light_pos,intensity,colors,norm_vector);
+            colors_copy[ind*3] = color[0]*brightness3;
+            colors_copy[ind*3+1] = color[1]*brightness3;
+            colors_copy[ind*3+2] = color[2]*brightness3;
+        }
+        free(colors);
+        free(vertices);
+        free(triangles);
+        free(color);
+        free(pos);
+        return colors_copy;
+    }
     GLfloat* generate_sphere(int ind){
         GLfloat* ret_arr = (GLfloat*)malloc(num_vertices*3*sizeof(GLfloat));
         int p = 0;
@@ -555,19 +676,19 @@ class particle_system{
                 GLfloat color_val2 = 0.75;
                 GLfloat color_val3 = 0.33;
                 if (j%3==0){
-                    colors[p*3] = 1.0;
-                    colors[p*3+1] = 0.0;
-                    colors[p*3+2] = 0.0;
+                    colors[p*3] = 0.2;
+                    colors[p*3+1] = 0.2;
+                    colors[p*3+2] = 0.8;
                 }
                 if (j%3==1){
-                    colors[p*3] = 0.0;
-                    colors[p*3+1] = 1.0;
-                    colors[p*3+2] = 0.0;
+                    colors[p*3] = 0.2;
+                    colors[p*3+1] = 0.2;
+                    colors[p*3+2] = 0.8;
                 }
                 if (j%3==2){
-                    colors[p*3] = 0.0;
-                    colors[p*3+1] = 0.0;
-                    colors[p*3+2] = 1.0;
+                    colors[p*3] = 0.2;
+                    colors[p*3+1] = 0.2;
+                    colors[p*3+2] = 0.8;
                 }
                 p++;
                 if (i==0 || i==layers-1){
@@ -1123,9 +1244,6 @@ void main_loop(SDL_Window* window){
     }
 }
 
-GLfloat* cross_product(){
-    return {};
-}
 
 int main(int argc, char* argv[]){
     float* pos = (float*)malloc(3*sizeof(float));
