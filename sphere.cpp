@@ -7,11 +7,15 @@ using namespace std;
 GLuint program;
 GLint attribute_coord2d, attribute_v_color;
 GLint attribute_coord3d;
+GLint attribute_normvec;
 GLuint vbo_triangle, vbo_triangle_colors;
 GLint uniform_fade;
-GLuint vbo_cube, vbo_cube_colors;
-GLuint ibo_cube_elements;
+GLuint vbo_sphere, vbo_sphere_colors;
+GLuint ibo_sphere_elements;
+GLuint vbo_norm_vectors;
 GLint uniform_mvp;
+GLint uniform_lightpos;
+GLint uniform_model;
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL.h>
 #include "shader_utils.h"
@@ -27,7 +31,7 @@ struct attributes{
     GLfloat v_color[3];
 };
 
-
+ 
 class particle_system{
     public:
         float grav_const = 6.674 * pow(10.0,-11.0);
@@ -38,7 +42,9 @@ class particle_system{
         int num_vertices = (layers-2)*num_points+2;
         int num_triangles =(layers-3)*(2*num_points)+2*num_points;
         int size = 0;
-        float intensity = 10;
+        float rotation_speed = 0.00;
+        float rotation_offset = 0; 
+        float intensity = 10000;
         GLfloat* light_pos;
         float framerate;
         float* positions;
@@ -48,15 +54,11 @@ class particle_system{
         float* masses;
         particle_system(float frames)
         {
-            // layers = num_layers;
-            // n_points = n_points;
-            // num_vertices = (layers-2)*num_points+2;
-            // num_triangles =(layers-3)*(2*num_points)+2*num_points;
             framerate=frames;
             light_pos = (GLfloat*)malloc(3*sizeof(GLfloat));
-            light_pos[0] = 55;
-            light_pos[1] = 55;
-            light_pos[2] = 55;
+            light_pos[0] = 0;
+            light_pos[1] = 0;
+            light_pos[2] = 0;
             positions = (float*)malloc(3*sizeof(float));
             velocities = (float*)malloc(3*sizeof(float));
             forces = (float*)malloc(3*sizeof(float));
@@ -99,6 +101,7 @@ class particle_system{
             temp_vel[size*3]=velocity[0];
             temp_vel[size*3+1]=velocity[1];
             temp_vel[size*3+2]=velocity[2];
+
             temp_force[size*3]=force[0];
             temp_force[size*3+1]=force[1];
             temp_force[size*3+2]=force[2];
@@ -278,7 +281,7 @@ class particle_system{
                     posz = positions[ind2*3+2];
                 }
             }
-            // cout<<(size-1)<<endl;
+            cout<<(size-1)<<endl;
             float* temp_pos = (float*)malloc((size-1)*3*sizeof(float));
             float* temp_vel = (float*)malloc((size-1)*3*sizeof(float));
             float* temp_force = (float*)malloc((size-1)*3*sizeof(float));
@@ -310,7 +313,7 @@ class particle_system{
             temp_pos[(size-1)*3-3] = (positions[ind1*3]+positions[ind2*3])/2.0;
             temp_pos[(size-1)*3-2] = (positions[ind1*3+1]+positions[ind2*3+1])/2.0;
             temp_pos[(size-1)*3-1] = (positions[ind1*3+2]+positions[ind2*3+2])/2.0;
-            // cout<<size*3-3<<endl;
+            cout<<"FUNNY END SIZE:"<<size-1<<endl;
 
             temp_vel[(size-1)*3-3] = velx;
             temp_vel[(size-1)*3-2] = vely;
@@ -335,6 +338,10 @@ class particle_system{
             forces = temp_force;
             masses = temp_mass;
             radii = temp_radius;
+            cout<<"FUNNY END SIZE 2.0:"<<size<<endl;
+            for (int i = 0; i<size;i++){
+                cout<<"POS X: "<<positions[i*3]<<" POS Y " << positions[i*3+1] << " POS Z: " << positions[i*3+2] << endl;;
+            }
         }
     bool can_merge(int ind1, int ind2){
         float distance = distance_calculator(ind1,ind2);
@@ -342,16 +349,25 @@ class particle_system{
     }
     bool update_merges(){
         bool flag = false;
-        for (int i = 0; i < size; i++){
-            for (int j = i+1; j < size; j++){
-                if (can_merge(i,j)){
-                    flag = true;
-                    merge_masses(i,j);
-                    i=0;
+        bool temp_flag = true;
+        while (temp_flag){
+            cout<<"loop time"<<endl;
+            temp_flag = false;
+            for (int i = 0; i < size; i++){
+                if(temp_flag){
                     break;
                 }
+                for (int j = i+1; j < size; j++){
+                    if (can_merge(i,j)){
+                        temp_flag = true;
+                        flag = true;
+                        merge_masses(i,j);
+                        i=0;
+                        break;
+                    }
+                }
             }
-        }
+    }
         return flag;
     }
     void updater(){
@@ -368,115 +384,84 @@ class particle_system{
         ret_val[2] = vec1[0]*vec2[1] - vec1[1]*vec2[0];
         return ret_val;
     }
-    
-    GLfloat* light_direction(GLfloat* point, GLfloat* source){
-        float delt_x = abs(point[0]-source[0]),delt_y = abs(point[1]-source[1]), delt_z = abs(point[2]-source[2]);
-        GLfloat* ret_val = (GLfloat*)malloc(3*sizeof(GLfloat));
-        float theta1 = atan2(delt_z,delt_x);
-        float theta2 = asin(delt_y/sqrt(pow(delt_x,2)+pow(delt_y,2)+pow(delt_z,2)));
-        ret_val[0] = 1*cos(theta1)*cos(theta2);
-        ret_val[1] = 1*sin(theta2);
-        ret_val[2] = 1*sin(theta1)*cos(theta2);
-        if (point[0]>source[0]){
-            ret_val[0]*=-1;
-        }
-        if (point[1]>source[1]){
-            ret_val[1]*=-1;
-        }
-        if (point[2]>source[2]){
-            ret_val[2]*=-1;
-        }
-        return ret_val;
-    }
-    
-    GLfloat* scalar_mult(GLfloat* vec, GLfloat scalar){
-        GLfloat* ret_val = (GLfloat*)malloc(3*sizeof(GLfloat));
-        for (int i = 0; i<3;i++){
-            ret_val[i]=vec[i]*scalar;
-        }
-        return ret_val;
-    }
-    
-    GLfloat get_brightness(GLfloat* point, GLfloat* source, GLfloat intensity, GLfloat* color,GLfloat* normal_vector){
-        GLfloat* vec1 = cross_product(normal_vector,color);
-        GLfloat* vec2 = scalar_mult(vec1,intensity);
-        GLfloat* direction = light_direction(point,source);
-        GLfloat ret_val = 0.0;
-        for (int i = 0; i < 3; i++){
-            ret_val += vec2[i]*direction[i];
-        }
-        free(vec1);
-        free(vec2);
-        free(direction);
-        return ret_val;
-    }
     GLfloat* calc_normal_vector(int tnum, GLuint* triangles,GLfloat* vertices){
+
         GLfloat* vec1 = (GLfloat*)malloc(3*sizeof(GLfloat));
         GLfloat* vec2 = (GLfloat*)malloc(3*sizeof(GLfloat));
+        vec1[0] = vertices[(triangles[tnum*3])*3]-vertices[(triangles[tnum*3+1])*3];
+        vec1[1] = vertices[(triangles[tnum*3])*3+1]-vertices[(triangles[tnum*3+1])*3+1];
+        vec1[2] = vertices[(triangles[tnum*3])*3+2]-vertices[(triangles[tnum*3+1])*3+2];
+        // vec1[0] = max((double)vec1[0],0.0);
+        // vec1[1] = max((double)vec1[1],0.0);
+        // vec1[2] = max((double)vec1[2],0.0);
+        // cout<<"Help me 1 "<<triangles[tnum*3]<<vertices[triangles[tnum*3]*3]<<endl;
+        // cout<<"Help me 2 "<<triangles[tnum*3+1]<<vertices[triangles[tnum*3+1]*3]<<endl;
 
-        vec1[0] = abs(vertices[(triangles[tnum*3]-1)*3]-vertices[(triangles[tnum*3+1]-1)*3]);
-        vec1[1] = abs(vertices[(triangles[tnum*3]-1)*3+1]-vertices[(triangles[tnum*3+1]-1)*3+1]);
-        vec1[2] = abs(vertices[(triangles[tnum*3]-1)*3+2]-vertices[(triangles[tnum*3+1]-1)*3+2]);
+        vec2[0] = vertices[(triangles[tnum*3+1])*3]-vertices[(triangles[tnum*3+2])*3];
+        vec2[1] = vertices[(triangles[tnum*3+1])*3+1]-vertices[(triangles[tnum*3+2])*3+1];
+        vec2[2] = vertices[(triangles[tnum*3+1])*3+2]-vertices[(triangles[tnum*3+2])*3+2];
+        // vec2[0] = max((double)vec2[0],0.0);
+        // vec2[1] = max((double)vec2[1],0.0);
+        // vec2[2] = max((double)vec2[2],0.0);
 
-        vec2[0] = abs(vertices[(triangles[tnum*3+1]-1)*3]-vertices[(triangles[tnum*3+2]-1)*3]);
-        vec2[1] = abs(vertices[(triangles[tnum*3+1]-1)*3+1]-vertices[(triangles[tnum*3+2]-1)*3+1]);
-        vec2[2] = abs(vertices[(triangles[tnum*3+1]-1)*3+2]-vertices[(triangles[tnum*3+2]-1)*3+2]);
 
         GLfloat* ret_vec = cross_product(vec1,vec2);
+        float mag = sqrt(ret_vec[0]*ret_vec[0]+ret_vec[1]*ret_vec[1]+ret_vec[2]*ret_vec[2]);
         free(vec1);
         free(vec2);
+        ret_vec[0]/=mag;
+        ret_vec[1]/=mag;
+        ret_vec[2]/=mag;
         return ret_vec;
     }
-    GLfloat* update_colors(){
-        GLfloat* colors = get_all_colors();
+    GLfloat* subtraction(GLfloat* vec1, GLfloat* vec2, int size){
+        GLfloat* ret_vec = (GLfloat*)malloc(size*sizeof(GLfloat));
+        for (int i = 0; i<size;i++){
+            ret_vec[i] = vec1[i]-vec2[i];
+        }
+        return ret_vec;
+    }
+    GLfloat* get_norm_vectors(){
         GLfloat* vertices = generate_spheres();
         GLuint* triangles = get_all_indices();
-        GLfloat* colors_copy = (GLfloat*)malloc(size*num_vertices*3);
-        GLfloat* pos = (GLfloat*)malloc(3*sizeof(GLfloat));
-        GLfloat* color = (GLfloat*)malloc(3*sizeof(GLfloat));
-        for (int i = 0; i < size*num_triangles; i++){
-            GLfloat* norm_vector = calc_normal_vector(i,triangles,vertices);
-            int ind = (triangles[i*3]-1);
-            pos[0] = vertices[ind*3];
-            pos[1] = vertices[ind*3+1];
-            pos[2] = vertices[ind*3+2];
-            color[0] =colors[ind*3];
-            color[1] =colors[ind*3+1];
-            color[2] =colors[ind*3+2];
-            GLfloat brightness1 = get_brightness(pos,light_pos,intensity,colors,norm_vector);
-            colors_copy[ind*3] = color[0]*brightness1;
-            colors_copy[ind*3+1] = color[1]*brightness1;
-            colors_copy[ind*3+2] = color[2]*brightness1;
-            ind = triangles[i*3+1]-1;
-            pos[0] = vertices[ind*3];
-            pos[1] = vertices[ind*3+1];
-            pos[2] = vertices[ind*3+2];
-            color[0] = colors[ind*3];
-            color[1] = colors[ind*3+1];
-            color[2] = colors[ind*3+2];
-            GLfloat brightness2 = get_brightness(pos,light_pos,intensity,colors,norm_vector);
-            colors_copy[ind*3] = color[0]*brightness2;
-            colors_copy[ind*3+1] = color[1]*brightness2;
-            colors_copy[ind*3+2] = color[2]*brightness2;
-            ind = triangles[i*3+2]-1;
-            pos[0] = vertices[ind*3];
-            pos[1] = vertices[ind*3+1];
-            pos[2] = vertices[ind*3+2];
-            color[0] =colors[ind*3];
-            color[1] =colors[ind*3+1];
-            color[2] =colors[ind*3+2];
-            GLfloat brightness3 = get_brightness(pos,light_pos,intensity,colors,norm_vector);
-            colors_copy[ind*3] = color[0]*brightness3;
-            colors_copy[ind*3+1] = color[1]*brightness3;
-            colors_copy[ind*3+2] = color[2]*brightness3;
+        GLfloat* norm_vectors = (GLfloat*)malloc(sizeof(GLfloat)*size*num_vertices*3);
+        float* count_array  = (float*)malloc(3*size*num_vertices*sizeof(float));
+        for (int j = 0; j< size*num_vertices*3;j++){
+            norm_vectors[j] = 0;
+            count_array[j] = 0;
         }
-        free(colors);
-        free(vertices);
+        for (int i = 0; i < size; i++){
+            for (int tri = 0; tri<num_triangles; tri++){
+                GLfloat* norm_vector;
+                if(true){
+                    norm_vector = calc_normal_vector(i*num_triangles+tri,triangles,vertices);
+                }
+                for (int j = 0; j < 3; j++){
+                    if (norm_vector[0]){
+                        norm_vectors[triangles[(i*num_triangles+tri)*3+j]*3] += norm_vector[0];
+                        count_array[triangles[(i*num_triangles+tri)*3+j]*3]++;
+                    }
+                    if (norm_vector[1]){
+                        norm_vectors[triangles[(i*num_triangles+tri)*3+j]*3+1] += norm_vector[1];
+                        count_array[triangles[(i*num_triangles+tri)*3+j]*3+1]++;
+                    }
+                    if (norm_vector[2]){
+                        norm_vectors[triangles[(i*num_triangles+tri)*3+j]*3+2] += norm_vector[2];
+                        count_array[triangles[(i*num_triangles+tri)*3+j]*3+2]++;
+                    }
+                }
+                free(norm_vector);
+            }
+        }
+        for (int k = 0; k<size*num_vertices; k++){
+            norm_vectors[k]/=count_array[k];
+            // norm_vectors[k]=max((double)norm_vectors[k],0.0);
+        }
+        free(count_array);
         free(triangles);
-        free(color);
-        free(pos);
-        return colors_copy;
-    }
+        free(vertices);
+        return norm_vectors;
+    }   
     GLfloat* generate_sphere(int ind){
         GLfloat* ret_arr = (GLfloat*)malloc(num_vertices*3*sizeof(GLfloat));
         int p = 0;
@@ -512,6 +497,7 @@ class particle_system{
         return ret_arr;
     }
     GLfloat* generate_spheres(){
+        cout<<"SPHERE SIZE: "<<size<<endl;
         GLfloat* ret_arr = (GLfloat*)malloc(size*num_vertices*3*sizeof(GLfloat));
         int p=0;
         for (int sphere = 0; sphere<size;sphere++){
@@ -523,8 +509,8 @@ class particle_system{
                     // float rot = num_points/2*M_PI*point;
                     float rot = (2*M_PI)/num_points*point;
                     // cout << "Rot: " << rot << endl;
-                    float x = sqrt(radius*radius - abs(init_y)*abs(init_y))*cos(rot);
-                    float z = sqrt(radius*radius - abs(init_y)*abs(init_y))*sin(rot);
+                    float x = sqrt(radius*radius - abs(init_y)*abs(init_y))*cos(rot+rotation_offset);
+                    float z = sqrt(radius*radius - abs(init_y)*abs(init_y))*sin(rot+rotation_offset);
                     ret_arr[p*3] = (GLfloat)(x+positions[sphere*3]);
                     ret_arr[p*3+1] = (GLfloat)(init_y+positions[sphere*3+1]);
                     ret_arr[p*3+2] = (GLfloat)(z+positions[sphere*3+2]);
@@ -541,6 +527,7 @@ class particle_system{
                 init_y+=(radii[sphere]*2)/(layers-1);
             } 
         }
+        rotation_offset+=rotation_speed;
         return ret_arr;
     }
     //Should be good now, plug into GPT for some feedback though
@@ -708,19 +695,19 @@ class particle_system{
                     GLfloat color_val2 = 0.75;
                     GLfloat color_val3 = 0.33;
                     if (j%3==0){
-                        colors[p*3] = 1.0;
-                        colors[p*3+1] = 0.0;
-                        colors[p*3+2] = 0.0;
+                        colors[p*3] = 0.2;
+                        colors[p*3+1] = 0.2;
+                        colors[p*3+2] = 0.8;
                     }
                     if (j%3==1){
-                        colors[p*3] = 0.0;
-                        colors[p*3+1] = 1.0;
-                        colors[p*3+2] = 0.0;
+                        colors[p*3] = 0.2;
+                        colors[p*3+1] = 0.2;
+                        colors[p*3+2] = 0.8;
                     }
                     if (j%3==2){
-                        colors[p*3] = 0.0;
-                        colors[p*3+1] = 0.0;
-                        colors[p*3+2] = 1.0;
+                        colors[p*3] = 0.2;
+                        colors[p*3+1] = 0.2;
+                        colors[p*3+2] = 0.8;
                     }
                     p++;
                     if (i==0 || i==layers-1){
@@ -737,7 +724,7 @@ particle_system p(250);
 GLfloat* sphere_verticies;
 GLuint* sphere_elements;
 GLfloat* sphere_colors;
-
+GLfloat* norm_vectors;
 float aspectaxis(){
     float outputzoom = 1.0f;
     float aspectorigin = 16.0f / 9.0f;
@@ -772,46 +759,46 @@ void on_resize(int width, int height){
 }
 
 
-glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1.0f*screen_width/screen_height,0.05f,250.0f);
+glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1.0f*screen_width/screen_height,0.05f,100.0f);
 bool init_resources(){
 
 
     sphere_elements = p.get_all_indices();
     sphere_colors = p.get_all_colors();
     sphere_verticies = p.generate_spheres();
-
+    norm_vectors = p.get_norm_vectors();
 
     // GLfloat* sphere_colors = temp_sphere_colors;
     // GLfloat* sphere_verticies = temp_sphere_verticies;
-    for (int i = 0; i < p.num_vertices*p.size; i++){
-        cout << "X: " << sphere_verticies[i*3] << " Y: " << sphere_verticies[i*3+1] << " Z: " << sphere_verticies[i*3+2]<<endl;
-    }
+    // for (int i = 0; i < p.num_vertices*p.size+9; i++){
+    //     cout << "X: " << norm_vectors[i*3] << " Y: " << norm_vectors[i*3+1] << " Z: " << norm_vectors[i*3+2]<<endl;
+    // }
 
     // for (int i = 0; i < p.num_vertices; i++){
     //     cout << "R: " << sphere_colors[i*3] << " G: " << sphere_colors[i*3+1] << " B: " << sphere_colors[i*3+2]<<endl;
     // }
 
-
-    for (int i = 0; i < p.num_triangles*p.size; i++){
-        cout << "A: " << sphere_elements[i*3] << " B: " << sphere_elements[i*3+1] << " C: " << sphere_elements[i*3+2]<<endl;
-    }
-    glGenBuffers(1, &ibo_cube_elements);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+    glGenBuffers(1, &ibo_sphere_elements);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_sphere_elements);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,p.num_triangles*sizeof(GLuint)*3*p.size,sphere_elements,GL_STATIC_DRAW);
 
 
 
-    glGenBuffers(1, &vbo_cube_colors);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_colors);
+    glGenBuffers(1, &vbo_sphere_colors);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_sphere_colors);
     glBufferData(GL_ARRAY_BUFFER, p.num_vertices*3*sizeof(GLfloat)*p.size, sphere_colors, GL_STATIC_DRAW);
 
 
 
-    glGenBuffers(1, &vbo_cube);
-    glBindBuffer(GL_ARRAY_BUFFER,vbo_cube);
+    glGenBuffers(1, &vbo_sphere);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_sphere);
     glBufferData(GL_ARRAY_BUFFER,p.num_vertices*3*sizeof(GLfloat)*p.size,sphere_verticies,
                 GL_STATIC_DRAW);
 
+    glGenBuffers(1, &vbo_norm_vectors);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_norm_vectors);
+    glBufferData(GL_ARRAY_BUFFER,p.num_vertices*3*sizeof(GLfloat)*p.size, norm_vectors,
+    GL_STATIC_DRAW);
 
     GLint compile_ok = GL_FALSE, link_ok = GL_FALSE;
     GLuint vs,fs;
@@ -846,15 +833,20 @@ bool init_resources(){
         cerr << "Could not bind uniform "<< uniform_name << endl;
         return 0;
     }
-    const char* uniform_name2;
-    // uniform_name2 = "m_transform";
-    // uniform_m_transform = glGetUniformLocation(program,uniform_name2);
-    // if (uniform_m_transform == -1){
-    //     cerr << "Could not bind uniform " << uniform_name2 << endl;
-    //     return false;
-    // }
     if (!link_ok){
         cerr << "Error in glLinkProgram" << endl;
+        return false;
+    }
+    uniform_name = "lightpos";
+    uniform_lightpos = glGetUniformLocation(program,uniform_name);
+    if (uniform_lightpos == -1 ){
+        cerr << "Could not bind uniform " << uniform_name <<endl;
+        return false;
+    }
+    uniform_name = "model";
+    uniform_model = glGetUniformLocation(program,uniform_name);
+    if (uniform_model == -1){
+        cerr << "Could not bind uniform " << uniform_name << endl;
         return false;
     }
     attribute_name = "v_color";
@@ -864,6 +856,13 @@ bool init_resources(){
         return false;
     }
     if (attribute_coord3d == -1){
+        cerr << "Could not bind the attribute " << attribute_name << endl;
+        return false;
+    }
+    attribute_name = "normvec";
+    cout<<"ATTRIBUTE NAME: "<<attribute_name<<endl;
+    attribute_normvec = glGetAttribLocation(program,attribute_name);
+    if (attribute_normvec == -1){
         cerr << "Could not bind the attribute " << attribute_name << endl;
         return false;
     }
@@ -908,18 +907,23 @@ GLfloat* create_circle(int num_points,int layers){
 }
 
 GLfloat* get_color_array(int num_points, int layers){
-    GLfloat* ret_arr = (GLfloat*)malloc(sizeof(GLfloat)*(3*num_points*(layers-2)+2));
+    cout<<"ERROR 1: "<<(num_points*(layers-2)+2)*3*sizeof(float)<<endl;
+    GLfloat* ret_arr = (GLfloat*)malloc(sizeof(GLfloat)*3*(num_points*(layers-2)+2));
     for (int i = 0; i < (((layers-2)*num_points)+2);i++){
         ret_arr[i*3] = 0.0;
         ret_arr[i*3+1] = 0.0;
         ret_arr[i*3+2] = 0.0;
+        // cout<<(i*3+2)*4<<endl;
     }
     return ret_arr;
 }
 int count =0;
 GLuint* get_cursor(int num_points, int layers){
-    int num_triangles =(layers-3)*(2*num_points)+2*num_points;    
+    int num_triangles =(layers-3)*(2*num_points)+2*num_points;  
+    cout<<num_triangles<<endl;
+    cout<<"LIFE IS FUUUUN: "<<layers<<endl;
     GLuint* fun_arr = (GLuint*)malloc(3*num_triangles*sizeof(GLuint));
+    cout<<"Whatup10.0"<<endl;
     int point = 0;
     for (int layer = 0; layer < layers; layer++){
         if (layer>0 && layer<layers-2){
@@ -977,12 +981,11 @@ GLuint* get_cursor(int num_points, int layers){
     }
         return fun_arr;
 }
-
 void render(SDL_Window* window){
     glClearColor(1.0,1.0,1.0,1.0);
     glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
     glUseProgram(program);
-    glBindBuffer(GL_ARRAY_BUFFER,vbo_cube);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_sphere);
     glEnableVertexAttribArray(attribute_coord3d);
     glVertexAttribPointer(
         attribute_coord3d,
@@ -993,7 +996,7 @@ void render(SDL_Window* window){
         0);
     
     glEnableVertexAttribArray(attribute_v_color);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_colors);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_sphere_colors);
     glVertexAttribPointer(
         attribute_v_color,
         3,
@@ -1002,34 +1005,40 @@ void render(SDL_Window* window){
         sizeof(GLfloat)*3,
         0
     );
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+
+
+    glEnableVertexAttribArray(attribute_normvec);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_norm_vectors);
+    glVertexAttribPointer(attribute_normvec,3,GL_FLOAT,GL_FALSE,sizeof(GLfloat)*3,0);
+
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_sphere_elements);
     int size; glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER,GL_BUFFER_SIZE, &size);
     glDrawElements(GL_TRIANGLES,p.num_triangles*p.size*3,GL_UNSIGNED_INT,0);
 
-    glBindBuffer(GL_ARRAY_BUFFER,vbo_cube);
+
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_sphere);
     int num_points = 10,layers = 10;
     GLfloat* cursor_points = create_circle(num_points,layers);
+
+
     glBufferData(GL_ARRAY_BUFFER,sizeof(GLfloat)*3*(num_points*(layers-2)+2),cursor_points,GL_STATIC_DRAW);
-    // if (count%100==0){
-    //     for (int i = 0; i<(num_points*(layers-2)+2);i++){
-    //         cout<<"Cursor X: "<<cursor_points[i*3]<<" Cursor Y: " << cursor_points[i*3+1] << " Cursor Z: " << cursor_points[i*3+2]<<endl;;
-    //     }
-    // }
-    // count++;
     free(cursor_points);
 
-    glBindBuffer(GL_ARRAY_BUFFER,vbo_cube_colors);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_sphere_colors);
     GLfloat* cursor_colors = get_color_array(num_points,layers);
     glBufferData(GL_ARRAY_BUFFER,sizeof(GLfloat)*3*(num_points*(layers-2)+2),cursor_colors,GL_STATIC_DRAW);
     free(cursor_colors);
 
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo_cube_elements);
+    cout<<(layers-3)*(2*num_points)+2*num_points<<endl;
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo_sphere_elements);
+
     GLuint* cursor_elements = get_cursor(num_points,layers);
+
     glBufferData(GL_ELEMENT_ARRAY_BUFFER,3*sizeof(GLuint)*((layers-3)*(2*num_points)+2*num_points),cursor_elements,GL_STATIC_DRAW);
     free(cursor_elements);
 
     glUseProgram(program);
-    glBindBuffer(GL_ARRAY_BUFFER,vbo_cube);
+    glBindBuffer(GL_ARRAY_BUFFER,vbo_sphere);
     glEnableVertexAttribArray(attribute_coord3d);
     glVertexAttribPointer(
         attribute_coord3d,
@@ -1040,7 +1049,7 @@ void render(SDL_Window* window){
         0);
     
     glEnableVertexAttribArray(attribute_v_color);
-    glBindBuffer(GL_ARRAY_BUFFER, vbo_cube_colors);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo_sphere_colors);
     glVertexAttribPointer(
         attribute_v_color,
         3,
@@ -1049,9 +1058,9 @@ void render(SDL_Window* window){
         sizeof(GLfloat)*3,
         0
     );
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_cube_elements);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_sphere_elements);
     glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER,GL_BUFFER_SIZE, &size);
-    glDrawElements(GL_TRIANGLES,p.num_triangles*p.size*3,GL_UNSIGNED_INT,0);
+    glDrawElements(GL_TRIANGLES,((layers-3)*(2*num_points)+2*num_points)*3,GL_UNSIGNED_INT,0);
     // glDrawArrays(GL_TRIANGLES,0,6);
 
     glDisableVertexAttribArray(attribute_coord3d);
@@ -1062,13 +1071,17 @@ void render(SDL_Window* window){
 
 void free_resources(){
     glDeleteProgram(program);
-    glDeleteBuffers(1,&vbo_cube);
-    glDeleteBuffers(1,&vbo_cube_colors);
-    glDeleteBuffers(1,&ibo_cube_elements);
+    glDeleteBuffers(1,&vbo_sphere);
+    glDeleteBuffers(1,&vbo_sphere_colors);
+    glDeleteBuffers(1,&ibo_sphere_elements);
+    glDeleteBuffers(1,&vbo_norm_vectors);
 
 }
-
+GLfloat* lightpos = (GLfloat*)malloc(3*sizeof(GLfloat));
 void logic(){
+    lightpos[0] = 0.0;
+    lightpos[1] = 0.0;
+    lightpos[2] = 0.0; 
     // float current_fade  = sinf(SDL_GetTicks() / 1000.0 * (2*3.14) / 5) / 2 + 0.5;
     // glm::mat4 projection = glm::mat4(1.0f); 
     glm::mat4 model = glm::translate(glm::mat4(1.0f),glm::vec3(0.0,0.0,0.0));
@@ -1078,10 +1091,14 @@ void logic(){
     glm::mat4 anim = glm::rotate(glm::mat4(1.0f), glm::radians(angle),axis_y);
     glm::mat4 mvp = projection * view * model;
     float move  = sinf(SDL_GetTicks() / 1000.0 * (2*3.14) / 5) / 2 + 0.5;
+    glUniform3fv(uniform_lightpos,1,lightpos);
     glUniformMatrix4fv(uniform_mvp,1,GL_FALSE,glm::value_ptr(mvp));
+    glUniformMatrix4fv(uniform_model,1,GL_FALSE,glm::value_ptr(model));
+    
     glm::vec3 axis_z(0,0,1);
     // glm::mat4 m_transform = glm::translate(glm::mat4(1.0f),glm::vec3(move,0.0,0.0))* glm::rotate(glm::mat4(1.0f),glm::radians(angle),axis_z);
     glUseProgram(program);
+    
     // glUniform1f(uniform_fade,current_fade);
     // glUniformMatrix4fv(uniform_m_transform,1,GL_FALSE,glm::value_ptr(m_transform));
     // glUniformMatrix4fv(uniform_mvp,1,GL_FALSE,glm::value_ptr(mvp));
@@ -1120,6 +1137,7 @@ float* movement_vector(float* cam_pos, float* look_at,float move_amount){
     }
     return ret_arr;
 }
+
 void main_loop(SDL_Window* window){
     while (true){
         SDL_Event ev;
@@ -1142,11 +1160,7 @@ void main_loop(SDL_Window* window){
                     lookx-=move_arr[0];
                     looky-=move_arr[1];
                     lookz-=move_arr[2];
-                    // lookz-=move_arr[2];
                 }
-                // else if (ev.key.keysym.scancode == SDL_SCANCODE_A){
-                //     facex -= camera_speed/divisor;
-                // }
                 else if (ev.key.keysym.scancode == SDL_SCANCODE_W){
                     facex+=move_arr[0];
                     facey+=move_arr[1];
@@ -1154,7 +1168,6 @@ void main_loop(SDL_Window* window){
                     lookx+=move_arr[0];
                     looky+=move_arr[1];
                     lookz+=move_arr[2];
-                    // lookz+=move_arr[2];
                 }
                 if (ev.key.keysym.scancode == SDL_SCANCODE_RETURN){
                     if (camera_speed<1000){
@@ -1184,11 +1197,10 @@ void main_loop(SDL_Window* window){
                 }
                 if (ev.key.keysym.scancode == SDL_SCANCODE_DOWN){
                     p.framerate+=5;
+                    if (p.framerate>1000){
+                        p.framerate+=20;
+                    }
                 }
-                // else if (ev.key.keysym.scancode == SDL_SCANCODE_D){
-                //     facez-=camera_speed/divisor;
-                //     cout<<"D is down and facez has a value of: "<<facez<<endl;
-                // }
             }
             if (ev.type = SDL_MOUSEBUTTONDOWN){
                 float dist = sqrt(pow(facex-lookx,2)+pow(facey-looky,2)+pow(facez-lookz,2));
@@ -1214,31 +1226,29 @@ void main_loop(SDL_Window* window){
                 }
                 mouse_state = SDL_GetMouseState(&mousex,&mousey);
             }
-            // if (ev.type == SDL_MOUSEMOTION){
-            //     facex-=ev.motion.xrel/camera_speed;
-            //     facey-=ev.motion.yrel/camera_speed;
-            // }
-
         }
-        // p.update_forces();
-        // cout<<"Size: "<<p.size<<endl;
-        // cout<<"X force: " << p.forces[0] << " Y force: " << p.forces[1] << " Z force: " << p.forces[2]<< endl;
-        // cout<<"X velocity: " << p.velocities[3] << " Y velocity: " << p.velocities[4] << " Z velocity: " << p.velocities[5]<< endl;
         p.updater();
         free(sphere_verticies);
         sphere_verticies = p.generate_spheres();
-        glBindBuffer(GL_ARRAY_BUFFER,vbo_cube);
+        glBindBuffer(GL_ARRAY_BUFFER,vbo_sphere);
         glBufferData(GL_ARRAY_BUFFER,p.num_vertices*3*sizeof(GLfloat)*p.size,sphere_verticies,
                 GL_STATIC_DRAW);
         free(sphere_elements);
         sphere_elements = p.get_all_indices();
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo_cube_elements);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo_sphere_elements);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER,p.num_triangles*3*p.size*sizeof(GLuint),sphere_elements,GL_STATIC_DRAW);
         free(sphere_colors);
         sphere_colors = p.get_all_colors();
-        glBindBuffer(GL_ARRAY_BUFFER,vbo_cube_colors);
+        glBindBuffer(GL_ARRAY_BUFFER,vbo_sphere_colors);
         glBufferData(GL_ARRAY_BUFFER,p.num_vertices*3*sizeof(GLfloat)*p.size,sphere_colors,GL_STATIC_DRAW);
+        free(norm_vectors);
+        norm_vectors = p.get_norm_vectors();
+        glBindBuffer(GL_ARRAY_BUFFER,vbo_norm_vectors);
+        glBufferData(GL_ARRAY_BUFFER,p.num_vertices*3*sizeof(GLfloat)*p.size, norm_vectors,
+        GL_STATIC_DRAW);
+        cout<<"Whatup2.0"<<endl;
         logic();
+        cout<<"Whatup3.0"<<endl;
         // cout << "Pointer to window:" << window<<endl;
         render(window);
     }
@@ -1246,6 +1256,7 @@ void main_loop(SDL_Window* window){
 
 
 int main(int argc, char* argv[]){
+    cout<<"Hey gang"<<endl;
     float* pos = (float*)malloc(3*sizeof(float));
     pos[0]=0.0;pos[1]=0.0;pos[2]=0.0;
     float* vel = (float*)malloc(3*sizeof(float));
@@ -1259,7 +1270,7 @@ int main(int argc, char* argv[]){
     pos[1]=1.0;
     pos[2]=1.0;
 
-    p.add_particle(pos,vel,force,45000000000000.0,12.0);
+    p.add_particle(pos,vel,force,45000000000000.0,5.0);
     
     pos[0]=-1.0;
     pos[1]=-1.0;
@@ -1318,6 +1329,16 @@ int main(int argc, char* argv[]){
     glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     main_loop(window);
     free_resources();
+    free(p.velocities);
+    free(p.forces);
+    free(p.positions);
+    free(p.radii);
+    free(p.masses);
+    free(p.light_pos);
+    free(sphere_colors);
+    free(sphere_elements);
+    free(sphere_verticies);
+
     return EXIT_SUCCESS;
 }
 

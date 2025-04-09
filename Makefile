@@ -1,9 +1,9 @@
-CPPFLAGS = $(shell sdl2-config --cflags) $(shell $(PKG_CONFIG) SDL2_image --cflags) $(EXTRA_CPPFLAGS)
+CPPFLAGS = $(shell sdl2-config --cflags) $(shell $(PKG_CONFIG) SDL2_image --cflags) $(EXTRA_CPPFLAGS) 
 LDLIBS = $(shell sdl2-config --libs) $(shell $(PKG_CONFIG) SDL2_image --libs) -lGLEW $(EXTRA_LDLIBS)
 EXTRA_LDLIBS ?= -lGL
 PKG_CONFIG ?= pkg-config
-all: cube
-cube: shader_utils.o
+all: sphere
+sphere: shader_utils.o
 clean:
-	rm -f *.o triangle cube
+	rm -f *.o triangle cube sphere
 .PHONY: all clean
