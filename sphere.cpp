@@ -24,7 +24,7 @@ GLint uniform_model;
 #include <glm/gtc/type_ptr.hpp>
 GLint uniform_m_transform;
 
-int screen_width = 800, screen_height=600;
+int screen_width = 1600, screen_height=1200;
 
 
  
