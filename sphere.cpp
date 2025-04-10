@@ -1219,6 +1219,12 @@ int main(int argc, char* argv[]){
     pos[1]=10.0;
     pos[2] =10.0;
     p.add_particle(pos,vel,force,250000000.0,1.0);
+    for (int i = 0;i<20;i++){
+        pos[0]=-i*3;
+        pos[1]=i*3;
+        pos[2]=50;
+        p.add_particle(pos,vel,force,250000000.0,1.0);
+    }
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* window = SDL_CreateWindow("My Fun N-Body Simulation",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screen_width, screen_height,
@@ -1235,9 +1241,7 @@ int main(int argc, char* argv[]){
         return EXIT_FAILURE;
     }
     SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE,1);
-    // glEnable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
-    // glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
     glBlendFunc(GL_SRC_ALPHA,GL_ONE_MINUS_SRC_ALPHA);
     main_loop(window);
     free_resources();
