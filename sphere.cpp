@@ -22,14 +22,10 @@ GLint uniform_model;
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-// #include "SDL_image.h"
 GLint uniform_m_transform;
 
 int screen_width = 800, screen_height=600;
-struct attributes{
-    GLfloat coord3d[3];
-    GLfloat v_color[3];
-};
+
 
  
 class particle_system{
@@ -39,8 +35,8 @@ class particle_system{
         int num_points = 50;
         float bounce_dist = 50.0;
         float bounce_return = 0.9;
-        int num_vertices = (layers-2)*num_points+2;
-        int num_triangles =(layers-3)*(2*num_points)+2*num_points;
+        int num_vertices = (layers-2)*(num_points+1)+2;
+        int num_triangles =(layers-3)*(2*(num_points+1))+2*(num_points+1);
         int size = 0;
         float rotation_speed = 0.00;
         float rotation_offset = 0; 
@@ -118,10 +114,6 @@ class particle_system{
             forces = temp_force;
             radii = temp_radius;
             masses = temp_mass;
-            // cout<<radii[size]<<endl;
-            // if(size==1){
-            //     cout<<radii[size-1]<<endl;
-            // }
             size++;
         }
         void update_positions(){
@@ -136,7 +128,6 @@ class particle_system{
                 else if (positions[i*3]<-1*bounce_dist){
                     positions[i*3]= -2*bounce_dist-positions[i*3]; 
                     velocities[i*3] = -velocities[i*3]*bounce_return;
-                    // cout<<"Bounce Pos: "<<positions[i*3] << " Bounce Vel: "<< velocities[i*3]<<endl;
                 }
                 if (positions[i*3+1]>bounce_dist){
                     positions[i*3+1]= 2*bounce_dist-positions[i*3+1];
@@ -177,8 +168,6 @@ class particle_system{
             }
         }
         void calc_force(int ind1, int ind2){
-            //theta1 = atan(z/x)
-            //theta2 = atan(y/x)
             float x1 = positions[ind1*3],x2 = positions[ind2*3];
             float y1 = positions[ind1*3+1],y2 = positions[ind2*3+1];
             float z1 = positions[ind1*3+2],z2 = positions[ind2*3+2];
@@ -193,15 +182,11 @@ class particle_system{
                 z*=-1;
             }
             float theta1 = asinf(y/distance_calculator(ind1,ind2));
-            // cout<<"ANGLE: "<<theta1<<endl;
-            // cout<<"DIST: " <<distance_calculator(ind1,ind2)<<endl;
-            // cout<<"Y1: "<<positions[ind1*3+1]<<" Y2: "<<positions[ind2*3+1] <<endl;
             float theta2 = acosf((double)x/(double)distance_calculator(ind1,ind2));
             float force = gravity_equation(masses[ind1],masses[ind2],distance_calculator(ind1,ind2));
             float force_x = force*sin(theta1)*cos(theta2);
             float force_y = force*sin(theta1);
             float force_z = force*sin(theta1)*sin(theta2);
-            // cout<<"Force X: "<<force_x<< " Force Y " << force_y << " Force Z "<<force_z<<endl;
             if (x1>x2){
                 forces[ind1*3]-=force_x;
                 forces[ind2*3]+=force_x;
@@ -244,8 +229,6 @@ class particle_system{
             return sqrt(pow(velx,2.0)+pow(vely,2.0)+pow(velz,2.0));
         }
         void merge_masses(int ind1, int ind2){
-            cout<<"\033[1;31mbold red text\033[0m\n"<<endl;
-            cout<<"SIZE: "<<size<<endl;
             float volume = 16.0/9.0 * M_PI*M_PI * radii[ind1]
             * radii[ind1] + radii[ind2]*radii[ind2];  
             float new_radius = pow(pow(radii[ind1]*10,3)+pow(radii[ind2]*10,3),1.0/3.0)/10;
@@ -256,7 +239,6 @@ class particle_system{
             float forcex = forces[ind1*3]+forces[ind2*3];
             float forcey = forces[ind1*3+1]+forces[ind2*3+1];
             float forcez = forces[ind1*3+2]+forces[ind2*3+2];
-            //m1v1 + m2v2 = mv
 
             float posx,posy,posz;
             if (radii[ind1]>radii[ind2]){
@@ -281,7 +263,6 @@ class particle_system{
                     posz = positions[ind2*3+2];
                 }
             }
-            cout<<(size-1)<<endl;
             float* temp_pos = (float*)malloc((size-1)*3*sizeof(float));
             float* temp_vel = (float*)malloc((size-1)*3*sizeof(float));
             float* temp_force = (float*)malloc((size-1)*3*sizeof(float));
@@ -301,19 +282,13 @@ class particle_system{
                     temp_force[3*count+2]=forces[3*i+2];
                     temp_mass[count] = masses[i];
                     temp_radius[count] = radii[i];
-                    // cout<<"interesting..."<<endl;
                     count++;
                 }
             }
-            // cout<<"PRE MERGER:"<<"X: " << positions[ind1]<< " Y " << positions[ind1+1] << " Z " << positions[ind1+2]<<endl;
-            // cout<<"PRE MERGER:"<<"X: " << positions[ind2]<< " Y " << positions[ind2+1] << " Z " << positions[ind2+2]<<endl;
-            // cout<<"PRE MERGER:"<<"X: " << (positions[ind1]+positions[ind2])/2.0<< " Y " << (positions[ind1+1]+positions[ind2+1])/2.0 << " Z " << (positions[ind1+2]+positions[ind2+2])/2.0<<endl;
-
 
             temp_pos[(size-1)*3-3] = (positions[ind1*3]+positions[ind2*3])/2.0;
             temp_pos[(size-1)*3-2] = (positions[ind1*3+1]+positions[ind2*3+1])/2.0;
             temp_pos[(size-1)*3-1] = (positions[ind1*3+2]+positions[ind2*3+2])/2.0;
-            cout<<"FUNNY END SIZE:"<<size-1<<endl;
 
             temp_vel[(size-1)*3-3] = velx;
             temp_vel[(size-1)*3-2] = vely;
@@ -325,7 +300,6 @@ class particle_system{
             
             temp_radius[size-2] = new_radius;
             temp_mass[size-2] = new_mass; 
-            // cout<<"POST MERGER:"<<"X: " << temp_pos[0]<< " Y " << temp_pos[1] << " Z " << temp_pos[2]<<endl;
             size--;
             free(positions);
             free(velocities);
@@ -333,15 +307,10 @@ class particle_system{
             free(masses);
             free(radii);
             positions = temp_pos;
-            // cout<<"POST MERGER:"<<"X: " << positions[0]<< " Y " << positions[1] << " Z " << positions[2]<<endl;
             velocities = temp_vel;
             forces = temp_force;
             masses = temp_mass;
             radii = temp_radius;
-            cout<<"FUNNY END SIZE 2.0:"<<size<<endl;
-            for (int i = 0; i<size;i++){
-                cout<<"POS X: "<<positions[i*3]<<" POS Y " << positions[i*3+1] << " POS Z: " << positions[i*3+2] << endl;;
-            }
         }
     bool can_merge(int ind1, int ind2){
         float distance = distance_calculator(ind1,ind2);
@@ -351,7 +320,6 @@ class particle_system{
         bool flag = false;
         bool temp_flag = true;
         while (temp_flag){
-            cout<<"loop time"<<endl;
             temp_flag = false;
             for (int i = 0; i < size; i++){
                 if(temp_flag){
@@ -385,25 +353,15 @@ class particle_system{
         return ret_val;
     }
     GLfloat* calc_normal_vector(int tnum, GLuint* triangles,GLfloat* vertices){
-
         GLfloat* vec1 = (GLfloat*)malloc(3*sizeof(GLfloat));
         GLfloat* vec2 = (GLfloat*)malloc(3*sizeof(GLfloat));
         vec1[0] = vertices[(triangles[tnum*3])*3]-vertices[(triangles[tnum*3+1])*3];
         vec1[1] = vertices[(triangles[tnum*3])*3+1]-vertices[(triangles[tnum*3+1])*3+1];
         vec1[2] = vertices[(triangles[tnum*3])*3+2]-vertices[(triangles[tnum*3+1])*3+2];
-        // vec1[0] = max((double)vec1[0],0.0);
-        // vec1[1] = max((double)vec1[1],0.0);
-        // vec1[2] = max((double)vec1[2],0.0);
-        // cout<<"Help me 1 "<<triangles[tnum*3]<<vertices[triangles[tnum*3]*3]<<endl;
-        // cout<<"Help me 2 "<<triangles[tnum*3+1]<<vertices[triangles[tnum*3+1]*3]<<endl;
 
         vec2[0] = vertices[(triangles[tnum*3+1])*3]-vertices[(triangles[tnum*3+2])*3];
         vec2[1] = vertices[(triangles[tnum*3+1])*3+1]-vertices[(triangles[tnum*3+2])*3+1];
         vec2[2] = vertices[(triangles[tnum*3+1])*3+2]-vertices[(triangles[tnum*3+2])*3+2];
-        // vec2[0] = max((double)vec2[0],0.0);
-        // vec2[1] = max((double)vec2[1],0.0);
-        // vec2[2] = max((double)vec2[2],0.0);
-
 
         GLfloat* ret_vec = cross_product(vec1,vec2);
         float mag = sqrt(ret_vec[0]*ret_vec[0]+ret_vec[1]*ret_vec[1]+ret_vec[2]*ret_vec[2]);
@@ -455,7 +413,16 @@ class particle_system{
         }
         for (int k = 0; k<size*num_vertices; k++){
             norm_vectors[k]/=count_array[k];
-            // norm_vectors[k]=max((double)norm_vectors[k],0.0);
+        }
+        for (int rep = 0; rep<size; rep++){
+            norm_vectors[rep*num_vertices*3]=0.0;
+            norm_vectors[rep*num_vertices*3+1]=1.0;
+            norm_vectors[rep*num_vertices*3+2]=0.0;
+            if (rep>0){
+                norm_vectors[rep*num_vertices*3-3]=0.0;
+                norm_vectors[rep*num_vertices*3-2]=-1.0;
+                norm_vectors[rep*num_vertices*3-1]=0.0;
+            }
         }
         free(count_array);
         free(triangles);
@@ -468,11 +435,8 @@ class particle_system{
         float init_y = -radii[ind];
         float radius = radii[ind];
         for (int layer = 0; layer<layers; layer++){
-            for (int point = 0; point<num_points;point++){
-                // cout<<p<<endl;
-                // float rot = num_points/2*M_PI*point;
+            for (int point = 0; point<=num_points;point++){
                 float rot = (2*M_PI)/num_points*point;
-                // cout << "Rot: " << rot << endl;
                 float calc_val = radius*radius - abs(init_y)*abs(init_y);
                 if (calc_val<0){
                     calc_val=0.0;
@@ -497,18 +461,14 @@ class particle_system{
         return ret_arr;
     }
     GLfloat* generate_spheres(){
-        cout<<"SPHERE SIZE: "<<size<<endl;
         GLfloat* ret_arr = (GLfloat*)malloc(size*num_vertices*3*sizeof(GLfloat));
         int p=0;
         for (int sphere = 0; sphere<size;sphere++){
             float init_y = -radii[sphere];
             float radius = radii[sphere];
             for (int layer = 0; layer<layers; layer++){
-                for (int point = 0; point<num_points;point++){
-                    // cout<<p<<endl;
-                    // float rot = num_points/2*M_PI*point;
+                for (int point = 0; point<=num_points;point++){
                     float rot = (2*M_PI)/num_points*point;
-                    // cout << "Rot: " << rot << endl;
                     float x = sqrt(radius*radius - abs(init_y)*abs(init_y))*cos(rot+rotation_offset);
                     float z = sqrt(radius*radius - abs(init_y)*abs(init_y))*sin(rot+rotation_offset);
                     ret_arr[p*3] = (GLfloat)(x+positions[sphere*3]);
@@ -530,9 +490,7 @@ class particle_system{
         rotation_offset+=rotation_speed;
         return ret_arr;
     }
-    //Should be good now, plug into GPT for some feedback though
     GLushort* get_indexes(){
-        //10*3 for 8, 
         GLushort* fun_arr = (GLushort*)malloc(3*num_triangles*sizeof(GLshort));
         int point = 0;
         for (int layer = 0; layer < layers; layer++){
@@ -594,70 +552,71 @@ class particle_system{
     GLuint* get_all_indices(){
         GLuint* fun_arr = (GLuint*)malloc(size*num_triangles*3*sizeof(GLuint));
         int point = 0;
+        int tnumpoints = num_points+1;
         for (int sphere = 0; sphere<size;sphere++){
             for (int layer = 0; layer < layers; layer++){
                 if (layer>0 && layer<layers-2){
-                    for (int i = (layer-1)*num_points+1; i < (layer)*num_points+1; i++){
-                        if (i%num_points!=0){
+                    for (int i = (layer-1)*tnumpoints+1; i < (layer)*tnumpoints+1; i++){
+                        if (i%tnumpoints!=0){
                             fun_arr[point*3] = i+sphere*num_vertices;
                             fun_arr[point*3+1] = i+1+sphere*num_vertices;
-                            fun_arr[point*3+2] = i+num_points+1+sphere*num_vertices;
+                            fun_arr[point*3+2] = i+tnumpoints+1+sphere*num_vertices;
                             fun_arr[point*3+3] = i+sphere*num_vertices;
-                            fun_arr[point*3+4] = i+num_points+sphere*num_vertices;
-                            fun_arr[point*3+5] = i+num_points+1+sphere*num_vertices;
+                            fun_arr[point*3+4] = i+tnumpoints+sphere*num_vertices;
+                            fun_arr[point*3+5] = i+tnumpoints+1+sphere*num_vertices;
                             point+=2;
                             }
                         else{
                             fun_arr[point*3] = i+sphere*num_vertices;
-                            fun_arr[point*3+1] = (layer-1)*num_points+1+sphere*num_vertices;
-                            fun_arr[point*3+2] = i+num_points+sphere*num_vertices;
-                            fun_arr[point*3+3] = (layer-1)*num_points+1+sphere*num_vertices;
-                            fun_arr[point*3+4] = i+num_points+sphere*num_vertices;
-                            fun_arr[point*3+5] = (layer)*num_points+1+sphere*num_vertices;
+                            fun_arr[point*3+1] = i+1+sphere*num_vertices;
+                            fun_arr[point*3+2] = i+tnumpoints+1+sphere*num_vertices;
+                            fun_arr[point*3+3] = i+sphere*num_vertices;
+                            fun_arr[point*3+4] = i+tnumpoints+sphere*num_vertices;
+                            fun_arr[point*3+5] = i+tnumpoints+1+sphere*num_vertices;
                             point+=2;
                         }
                     }
                 }
                 else if(layer==0){
-                    for (int i = 0; i<num_points;i++){
-                        if (i!=num_points-1){
+                    for (int i = 0; i<tnumpoints;i++){
+                        if (i!=tnumpoints-1){
                             fun_arr[point*3] = 0+sphere*num_vertices;
                             fun_arr[point*3+1] = i+1+sphere*num_vertices;
                             fun_arr[point*3+2] = i+2+sphere*num_vertices;
                         }
                         else{
-                            fun_arr[point*3]=0+sphere*num_vertices;
-                            fun_arr[point*3+1]=i+1+sphere*num_vertices;
-                            fun_arr[point*3+2] = 1+sphere*num_vertices;
+                            fun_arr[point*3] = 0+sphere*num_vertices;
+                            fun_arr[point*3+1] = i+1+sphere*num_vertices;
+                            fun_arr[point*3+2] = i+2+sphere*num_vertices;
                         }
                         point++;
                     }
                 }
                 else if (layer==layers-2){
-                    for (int i = num_points*(layer-1)+1; i<num_points*(layer)+1;i++){
-                        if (i%num_points!=0){
-                            fun_arr[point*3]= num_points*(layer)+1+sphere*num_vertices;
+                    for (int i = tnumpoints*(layer-1)+1; i<tnumpoints*(layer)+1;i++){
+                        if (i%tnumpoints!=0){
+                            fun_arr[point*3]= tnumpoints*(layer)+1+sphere*num_vertices;
                             fun_arr[point*3+1] = i+sphere*num_vertices;
                             fun_arr[point*3+2] = 1+i+sphere*num_vertices;
                         }
                         else{
-                            fun_arr[point*3] = num_points*(layer)+1+sphere*num_vertices;
+                            fun_arr[point*3]= tnumpoints*(layer)+1+sphere*num_vertices;
                             fun_arr[point*3+1] = i+sphere*num_vertices;
-                            fun_arr[point*3+2] = num_points*(layer-1)+1+sphere*num_vertices;
+                            fun_arr[point*3+2] = 1+i+sphere*num_vertices;
                         }
                         point++;
                     }
                 }
             }
         }
+        void* ret = malloc(3);
         return fun_arr;
     }  
     GLfloat* get_sphere_colors(){
-        // cout<<"Vertices: "<<num_vertices<<endl;
         GLfloat* colors = (GLfloat*)malloc(3*num_vertices*sizeof(GLfloat));
         int p = 0;
         for (int i = 0; i < layers; i++){
-            for (int j = 0; j<num_points; j++ ){
+            for (int j = 0; j<num_points+1; j++ ){
 
                 GLfloat color_val1 = 1.0;
                 GLfloat color_val2 = 0.75;
@@ -690,7 +649,7 @@ class particle_system{
         GLfloat* colors = (GLfloat*)malloc(size*num_vertices*sizeof(GLfloat)*3);
         for (int sphere = 0; sphere<size;sphere++){
             for (int i = 0; i < layers; i++){
-                for (int j = 0; j<num_points; j++ ){
+                for (int j = 0; j<num_points+1; j++ ){
                     GLfloat color_val1 = 1.0;
                     GLfloat color_val2 = 0.75;
                     GLfloat color_val3 = 0.33;
@@ -762,21 +721,11 @@ void on_resize(int width, int height){
 glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1.0f*screen_width/screen_height,0.05f,100.0f);
 bool init_resources(){
 
-
     sphere_elements = p.get_all_indices();
     sphere_colors = p.get_all_colors();
     sphere_verticies = p.generate_spheres();
     norm_vectors = p.get_norm_vectors();
 
-    // GLfloat* sphere_colors = temp_sphere_colors;
-    // GLfloat* sphere_verticies = temp_sphere_verticies;
-    // for (int i = 0; i < p.num_vertices*p.size+9; i++){
-    //     cout << "X: " << norm_vectors[i*3] << " Y: " << norm_vectors[i*3+1] << " Z: " << norm_vectors[i*3+2]<<endl;
-    // }
-
-    // for (int i = 0; i < p.num_vertices; i++){
-    //     cout << "R: " << sphere_colors[i*3] << " G: " << sphere_colors[i*3+1] << " B: " << sphere_colors[i*3+2]<<endl;
-    // }
 
     glGenBuffers(1, &ibo_sphere_elements);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo_sphere_elements);
@@ -821,12 +770,6 @@ bool init_resources(){
         return -1;
     }
     const char* uniform_name;
-    // uniform_name = "fade";
-    // uniform_fade = glGetUniformLocation(program,uniform_name);
-    // if (uniform_fade == -1){
-    //     cerr << "Could not bind uniform " << uniform_name << endl;
-    //     return false;
-    // }
     uniform_name = "mvp";
     uniform_mvp = glGetUniformLocation(program,uniform_name);
     if (uniform_mvp == -1){
@@ -860,7 +803,6 @@ bool init_resources(){
         return false;
     }
     attribute_name = "normvec";
-    cout<<"ATTRIBUTE NAME: "<<attribute_name<<endl;
     attribute_normvec = glGetAttribLocation(program,attribute_name);
     if (attribute_normvec == -1){
         cerr << "Could not bind the attribute " << attribute_name << endl;
@@ -882,10 +824,7 @@ GLfloat* create_circle(int num_points,int layers){
     int p = 0;
     for (int layer = 0; layer<layers; layer++){
         for (int point = 0; point<num_points;point++){
-                // cout<<p<<endl;
-                // float rot = num_points/2*M_PI*point;
                 float rot = (2*M_PI)/num_points*point;
-                // cout << "Rot: " << rot << endl;
                 float x = sqrt(radius*radius - abs(init_y)*abs(init_y))*cos(rot);
                 float z = sqrt(radius*radius - abs(init_y)*abs(init_y))*sin(rot);
                 ret_arr[p*3] = (GLfloat)(x+lookx);
@@ -907,23 +846,18 @@ GLfloat* create_circle(int num_points,int layers){
 }
 
 GLfloat* get_color_array(int num_points, int layers){
-    cout<<"ERROR 1: "<<(num_points*(layers-2)+2)*3*sizeof(float)<<endl;
     GLfloat* ret_arr = (GLfloat*)malloc(sizeof(GLfloat)*3*(num_points*(layers-2)+2));
     for (int i = 0; i < (((layers-2)*num_points)+2);i++){
         ret_arr[i*3] = 0.0;
         ret_arr[i*3+1] = 0.0;
         ret_arr[i*3+2] = 0.0;
-        // cout<<(i*3+2)*4<<endl;
     }
     return ret_arr;
 }
 int count =0;
 GLuint* get_cursor(int num_points, int layers){
     int num_triangles =(layers-3)*(2*num_points)+2*num_points;  
-    cout<<num_triangles<<endl;
-    cout<<"LIFE IS FUUUUN: "<<layers<<endl;
     GLuint* fun_arr = (GLuint*)malloc(3*num_triangles*sizeof(GLuint));
-    cout<<"Whatup10.0"<<endl;
     int point = 0;
     for (int layer = 0; layer < layers; layer++){
         if (layer>0 && layer<layers-2){
@@ -1029,7 +963,6 @@ void render(SDL_Window* window){
     glBufferData(GL_ARRAY_BUFFER,sizeof(GLfloat)*3*(num_points*(layers-2)+2),cursor_colors,GL_STATIC_DRAW);
     free(cursor_colors);
 
-    cout<<(layers-3)*(2*num_points)+2*num_points<<endl;
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,ibo_sphere_elements);
 
     GLuint* cursor_elements = get_cursor(num_points,layers);
@@ -1082,8 +1015,6 @@ void logic(){
     lightpos[0] = 0.0;
     lightpos[1] = 0.0;
     lightpos[2] = 0.0; 
-    // float current_fade  = sinf(SDL_GetTicks() / 1000.0 * (2*3.14) / 5) / 2 + 0.5;
-    // glm::mat4 projection = glm::mat4(1.0f); 
     glm::mat4 model = glm::translate(glm::mat4(1.0f),glm::vec3(0.0,0.0,0.0));
     glm::mat4 view = glm::lookAt(glm::vec3(facex,facey,facez),glm::vec3(lookx,looky,lookz),glm::vec3(0.0,1.0,0.0));
     float angle = SDL_GetTicks() / 1000.0 * 45;
@@ -1096,12 +1027,8 @@ void logic(){
     glUniformMatrix4fv(uniform_model,1,GL_FALSE,glm::value_ptr(model));
     
     glm::vec3 axis_z(0,0,1);
-    // glm::mat4 m_transform = glm::translate(glm::mat4(1.0f),glm::vec3(move,0.0,0.0))* glm::rotate(glm::mat4(1.0f),glm::radians(angle),axis_z);
     glUseProgram(program);
     
-    // glUniform1f(uniform_fade,current_fade);
-    // glUniformMatrix4fv(uniform_m_transform,1,GL_FALSE,glm::value_ptr(m_transform));
-    // glUniformMatrix4fv(uniform_mvp,1,GL_FALSE,glm::value_ptr(mvp));
 
 }
 int mouse_state = 0;
@@ -1246,17 +1173,13 @@ void main_loop(SDL_Window* window){
         glBindBuffer(GL_ARRAY_BUFFER,vbo_norm_vectors);
         glBufferData(GL_ARRAY_BUFFER,p.num_vertices*3*sizeof(GLfloat)*p.size, norm_vectors,
         GL_STATIC_DRAW);
-        cout<<"Whatup2.0"<<endl;
         logic();
-        cout<<"Whatup3.0"<<endl;
-        // cout << "Pointer to window:" << window<<endl;
         render(window);
     }
 }
 
 
 int main(int argc, char* argv[]){
-    cout<<"Hey gang"<<endl;
     float* pos = (float*)malloc(3*sizeof(float));
     pos[0]=0.0;pos[1]=0.0;pos[2]=0.0;
     float* vel = (float*)malloc(3*sizeof(float));
@@ -1275,16 +1198,7 @@ int main(int argc, char* argv[]){
     pos[0]=-1.0;
     pos[1]=-1.0;
     pos[2]=-1.0;
-    // for (int i = 0; i<2;i++){
-    //     for (int j = 0; j<2; j++){
-    //         for (int k = 0; k<2;k++){
-    //             pos[0]=2+i*5;
-    //             pos[1]=2+j*5;
-    //             pos[2]=2+k*5;
-    //             p.add_particle(pos,vel,force,250000000.0,1.3);
-    //         }
-    //     }
-    // }
+
     p.add_particle(pos,vel,force,250000000.0,1.0);
     pos[0]=5.0;
     pos[1]=5.0;
@@ -1305,8 +1219,6 @@ int main(int argc, char* argv[]){
     pos[1]=10.0;
     pos[2] =10.0;
     p.add_particle(pos,vel,force,250000000.0,1.0);
-
-    // cout<< "Velocity: "<<p.velocities[8]<<" Vel[2]"<<vel[2]<<endl;
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Window* window = SDL_CreateWindow("My Fun N-Body Simulation",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, screen_width, screen_height,
