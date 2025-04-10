@@ -718,7 +718,7 @@ void on_resize(int width, int height){
 }
 
 
-glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1.0f*screen_width/screen_height,0.05f,100.0f);
+glm::mat4 projection = glm::perspective(glm::radians(45.0f), 1.0f*screen_width/screen_height,0.05f,200.0f);
 bool init_resources(){
 
     sphere_elements = p.get_all_indices();
